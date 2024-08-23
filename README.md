@@ -1,5 +1,5 @@
-# Code a TCP/IP stack
+# Writing a Tiny x86 Bootloader
 
-[Tutorial - Code a TCP/IP stack](https://www.saminiir.com/lets-code-tcp-ip-stack-1-ethernet-arp/)
+[Writing a Tiny x86 Bootloader](https://www.joe-bergeron.com/posts/Writing%20a%20Tiny%20x86%20Bootloader)
 
-Written by Sami • 6 March 2016
+Written by Joe Bergeron • 27 December 2016
