@@ -96,6 +96,9 @@
 
         push 0000h
         call movecursor
+        add sp, 2
+
+        push msg
 
 ; This is the label for the "clearscreen" subroutine.
 clearscreen:
@@ -140,3 +143,12 @@ movecursor:
         mov sp, bp
         pop bp
         ret
+
+;; The final subroutine we want to write is simple one that, given a pointer to the beginning of a string,
+;; prints that string to the screen beginning at the current cursor position. Using the video interrupt
+;; code with "AH=0Eh" works nicely. First off, we can define some data and store a pointer to its starting
+;; address with something that looks like this.
+;;
+;; The "0" at the end terminates the string with a null character, so we'll know when the string is done.
+;; We can reference the address of this string with "msg".
+msg:    db "Oh boy do I sure love assembly!", 0
