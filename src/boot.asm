@@ -80,6 +80,23 @@
         ; then jumps to the "clearscreen" label to execute the code at that location.
         call clearscreen
 
+        ;; The overhead at the beginning and end of the subroutine allows us to adhere to the standard
+        ;; calling convention between caller and callee. "pusha" and "popa" push and pop all general
+        ;; registers on an off the stack. We save the caller's base pointer (4 bytes), and update the
+        ;; base pointer with the new stack pointer. At the very end, we essentially mirror this process.
+
+        ;; Now let's write a subroutine for moving the cursor to and arbitrary (row,col) position on the screen.
+        ;; Int 10/AH=02h does this nicely. This subroutine will be slightly different, since we'll need to pass
+        ;; it an argument. According to the spec, we must set register DX to a two byte value, the first
+        ;; representing the desired row, and second the desired column, "AH" has gotta be 0x02, "BH" represents
+        ;; the page number we want to move the cursor to. This parameter has to do with the fact that the BIOS
+        ;; allows you to draw to off-screen pages, in order to facilitate smoother visual transitions by rendering
+        ;; off-screen content before it is shown to the user. This is called "multiple" or "double buffering".
+        ;; We don't really acre about this, however, so we'll just use the default page of 0.
+
+        push 0000h
+        call movecursor
+
 ; This is the label for the "clearscreen" subroutine.
 clearscreen:
         ; Saves the current value of the "bp" (base pointer) register onto the stack.
@@ -108,4 +125,18 @@ clearscreen:
         pop bp
 
         ; Returns from the subroutine by popping the return address off the stack and jumping back to that address.
+        ret
+
+movecursor:
+        push bp
+        mov bp, sp
+        pusha
+
+        mov dx, [bp+4] ; get the argument from the stack. |bp| = 2, |arg| = 2
+        mov ah, 02h    ; set cursor position
+        mov bh, 00h    ; page 0 - doesn't matter, we're not using double-buffering
+
+        popa
+        mov sp, bp
+        pop bp
         ret
