@@ -1,4 +1,28 @@
-        ; In x86 assembly language, the CPU can operate in different modes: 
+;; When a computer boots up, the job of getting from nothing to a functioning operating system involves a number of steps.
+;; The first thing that happens on an x86 PC is the operation of the BIOS.
+;; When you turn your computer on, the processor immediately looks at physical address 0xFFFFFFF0 for the BIOS code,
+;; which is generally on some read-only piece of ROM somewhere in your computer.
+;; The BIOS then POSTs, and searches for acceptable boot media.
+;; The BIOS accepts some medium as an acceptable boot device if its boot sector, the first 512 bytes of the
+;; disk are readable and end in the exact bytes 0x55AA, which constitutes the boot signature for the medium.
+;; If the BIOS deems some drive bootable, then it loads the first 512 bytes of the drive into memory address 0x007C00,
+;; and transfers program control to this address with a jump instruction to the processor.
+;;
+;; Most modern BIOS programs are pretty robust, for example, if the BIOS recognizes several drives with appropriate boot sectors,
+;; it will boot from the one with the highest pre-assigned priority;
+;; which is exactly why most computers default to booting from USB rather than hard disk if a bootable USB drive is inserted on boot.
+;;
+;; Typically, the role of the boot sector code is to load a larger, "real" operating system stored somewhere else on non-volatile memory.
+;; In actuality, this is a multi-step process. For example, Master Boot Record, or MBR,
+;; is a very common (though now becoming more and more deprecated) boot sector standard for portioned storage devices.
+;; Since the boot sector may contain a maximum of 512 bytes of data, an MBR bootloader often simply does the job of passing control to a different,
+;; larger bootloader stored somewhere else on disk, whose job in turn is to actually load the operating system (chain-loading).
+;;
+;; It's also important to note that the execution is passed over to bootstrap code while the processor is in real mode,
+;; rather than protected mode, which means that (among other things) access to all of those great features of operating systems that you know and love is out the window.
+;; On the other hand, it means that we can directly access the BIOS interrupt calls, which offer some neat low-level functionality.
+
+        ; In x86 assembly language, the CPU can operate in different modes:
         ;   16-bit (real mode)
         ;   32-bit (protected mode)
         ;   64-bit (long mode).
@@ -8,9 +32,14 @@
         bits 16
 
 
+        ;; x86 processors have a number of segment registers, which are used to store the beginning of a 64k segment of memory.
+        ;; In real mode, memory is addressed using a logical address, rather than the physical address.
+        ;; The logical address of a piece of memory consists of the 64k segment it resides in,
+        ;; as well as its offset from the beginning of that segment. The 64k segment of a logical address should be divided by 16,
+        ;; so, given a logical address beginning at 64k segment A, with offset B, the reconstructed physical address would be A*0x10 + B.
+        ;;
         ;; The processor has a DS register for the data segment. 
-        ;; Since our code resides at 0x7C00, the data segment may 
-        ;; begin at 0x7C0, which we can set with
+        ;; Since our code resides at 0x7C00, the data segment may begin at 0x7C0.
 
         ; ax:
         ;   This is the 16-bit "accumulator" register, one of the 
@@ -26,11 +55,9 @@
         ;; We have to load the segment into another register (here it's ax) first;
         ;; We can't directly stick it in the segment register. 
         ;; Let's start the storage for the stack directly after the 512 bytes of the bootloader. 
-        ;; Since the bootloader extends from 0x7C00 for 512 bytes to 0x7E00, 
-        ;; the stack segment, SS, will be 0x7E0.
+        ;; Since the bootloader extends from 0x7C00 for 512 bytes to 0x7E00, the stack segment, SS, will be 0x7E0.
 
-        ; 07E0h = (07C00h+200h)/10h, beginning of stack segment.
-        mov ax, 07E0h; move the value "07E0h" into the "ax" register 
+        mov ax, 07E0h ; 07E0h = (07C00h+200h)/10h, beginning of stack segment.
 
         ; ss:
         ;   This is the "stack segment" register, which is used to hold
@@ -40,9 +67,8 @@
         mov ss, ax ; moves the value from the "ax" register into the "ss" register.
 
 
-        ;; On x86 architectures, the stack pointer decreases, so we 
-        ;; must set the initial stack pointer to a number of bytes past 
-        ;; the stack segment equal to the desired size of the stack.
+        ;; On x86 architectures, the stack pointer decreases, so we must set the initial stack pointer
+        ;; to a number of bytes past the stack segment equal to the desired size of the stack.
 
         ; sp:
         ;   This is the 16-bit "stack pointer" register. 
@@ -51,12 +77,13 @@
         ;   return addresses, local variables, and other function-related information.
         mov sp, 2000h ; 8k of stack space.
 
+
         ;; We're now free to use the standard calling convention in order to safely 
         ;; pass control over to different functions. We can use "push" in order to 
         ;; push "call-saved" registers on the stack, pass parameters to callee again 
         ;; with "push", and then use "call" to save the current program counter to 
         ;; the stack, and perform an unconditional jump to the given label.
-
+        ;;
         ;; Now that all that is out of the way, let's figure out a way to clear the screen,
         ;; move the pointer, and write some text. This is where real mode and BIOS interrupt calls
         ;; come into play. By storing certain registers with certain parameters and then sending a
@@ -67,23 +94,11 @@
         ;; update both their values at once by simply pushing a 16 bit value to AX, however, we'll opt
         ;; for the clearer approach of updating each 1-byte subregister at a time.
 
-        ;; If you look at the spec, you'll see that we need to set AH to 0x07, and AL to 0x00. 
-        ;; The value of register BH refers to the BIOS color attribute, which for our purposes will be 
-        ;; black background (0x0) behind light-gray (0x7) text, so we must set BH to 0x07. 
-        ;; Registers CX and DX refer to the subsection of the screen that we want to clear. 
-        ;; The standard number of character rows/cols here is 25/80, so we set CH and CL to 
-        ;; 0x00 to set (0,0) as the top left of the screen to clear, and DH as 0x18 = 24, 
-        ;; DL as 0x4f = 79. Putting this all together in a function, we get the following snippet. 
-
         ; Calls the "clearscreen" subroutine/function.
         ; The "call" instruction pushes the return address onto the stack and
         ; then jumps to the "clearscreen" label to execute the code at that location.
         call clearscreen
 
-        ;; The overhead at the beginning and end of the subroutine allows us to adhere to the standard
-        ;; calling convention between caller and callee. "pusha" and "popa" push and pop all general
-        ;; registers on an off the stack. We save the caller's base pointer (4 bytes), and update the
-        ;; base pointer with the new stack pointer. At the very end, we essentially mirror this process.
 
         ;; Now let's write a subroutine for moving the cursor to and arbitrary (row,col) position on the screen.
         ;; Int 10/AH=02h does this nicely. This subroutine will be slightly different, since we'll need to pass
@@ -100,14 +115,24 @@
 
         push msg
 
-; This is the label for the "clearscreen" subroutine.
-clearscreen:
-        ; Saves the current value of the "bp" (base pointer) register onto the stack.
-        push bp
+
+;; If you look at the spec, you'll see that we need to set AH to 0x07, and AL to 0x00.
+;; The value of register BH refers to the BIOS color attribute, which for our purposes will be
+;; black background (0x0) behind light-gray (0x7) text, so we must set BH to 0x07.
+;; Registers CX and DX refer to the subsection of the screen that we want to clear.
+;; The standard number of character rows/cols here is 25/80, so we set CH and CL to
+;; 0x00 to set (0,0) as the top left of the screen to clear, and DH as 0x18 = 24,
+;; DL as 0x4f = 79. Putting this all together in a function, we get the following snippet.
+;;
+;; The overhead at the beginning and end of the subroutine allows us to adhere to the standard
+;; calling convention between caller and callee. "pusha" and "popa" push and pop all general
+;; registers on an off the stack. We save the caller's base pointer (4 bytes), and update the
+;; base pointer with the new stack pointer. At the very end, we essentially mirror this process.
+clearscreen: ; This is the label for the "clearscreen" subroutine.
+        push bp ; Saves the current value of the "bp" (base pointer) register onto the stack.
         mov bp, sp
 
-        ; Push all general-purpose registers ("ax","cx","dx","bx","sp","bp","si","di") onto the stack.
-        pusha
+        pusha ; Push all general-purpose registers ("ax","cx","dx","bx","sp","bp","si","di") onto the stack.
 
         mov ah, 07h ; tells BIOS to scroll down window
         mov al, 00h ; clear entire window
@@ -119,17 +144,21 @@ clearscreen:
         ; This triggers a BIOS interrupt, specifically interrupt "10th", which handles video services.
         int 10h ; calls video interrupt
 
-        ; Restores all the general-purpose register that where saved with.
-        popa
+        popa ; Restores all the general-purpose register that where saved with.
 
         mov sp, bp
 
-        ; Restore the "bp" register to its original value. This restores the caller's stack frame.
-        pop bp
+        pop bp ; Restore the "bp" register to its original value. This restores the caller's stack frame.
 
-        ; Returns from the subroutine by popping the return address off the stack and jumping back to that address.
-        ret
+        ret ; Returns from the subroutine by popping the return address off the stack and jumping back to that address.
 
+
+;; The only thing that might look unusual is the "mov dx, [bp+4]".
+;; This moves the argument we passed into the DX register.
+;; The reason we offset by 4 is that the contents of bp takes up 2 bytes on the stack,
+;; and the argument takes up two bytes, so we have to offset a total of 4 bytes from the actual address of bp.
+;; Note also that the caller has the responsibility to clean the stack after the callee returns,
+;; which amounts to removing the arguments from the top of the stack by moving the stack pointer.
 movecursor:
         push bp
         mov bp, sp
@@ -144,11 +173,14 @@ movecursor:
         pop bp
         ret
 
-;; The final subroutine we want to write is simple one that, given a pointer to the beginning of a string,
-;; prints that string to the screen beginning at the current cursor position. Using the video interrupt
-;; code with "AH=0Eh" works nicely. First off, we can define some data and store a pointer to its starting
-;; address with something that looks like this.
+
+;; Given a pointer to the beginning of a string, prints that
+;; string to the screen beginning at the current cursor position.
+;; Using the video interrupt code with "AH=0Eh" works nicely.
+;; First off, we can define some data and store a pointer to
+;; its starting address with something that looks like this.
 ;;
-;; The "0" at the end terminates the string with a null character, so we'll know when the string is done.
+;; The "0" at the end terminates the string with a null character,
+;; so we'll know when the string is done.
 ;; We can reference the address of this string with "msg".
 msg:    db "Oh boy do I sure love assembly!", 0
