@@ -27,7 +27,7 @@
         ;   32-bit (protected mode)
         ;   64-bit (long mode).
 
-        ; Tells  the assembler that the code that follows is intended to be excuted in 16-bit mode.
+        ; Tells the assembler that the code that follows is intended to be excuted in 16-bit mode.
         ; This is common in bootloader or BIOS-level programming, where the CPU stars in real mode (16-bit).
         bits 16
 
@@ -168,6 +168,32 @@ movecursor:
         mov ah, 02h    ; set cursor position
         mov bh, 00h    ; page 0 - doesn't matter, we're not using double-buffering
 
+        popa
+        mov sp, bp
+        pop bp
+        ret
+
+
+print:
+        push bp
+        mov bp, sp
+        pusha
+        mov si, [bp+4] ; grab the pointer to the data
+        mov bh, 0x00   ; page number, 0 again
+        mov bl, 0x00   ; foreground color, irrelevant - in text mode
+        mov ah, 0x0E   ; print character to TTY
+
+
+.char:
+        mov al, [si] ; get the current char from out pointer position
+        add si, 1    ; keep incrementing si until we see a null char
+        or al, 0
+        je .return   ; end if the string is done
+        int 0x10     ; print the character if we're not done
+        jmp .char    ; keep looping
+
+
+.return:
         popa
         mov sp, bp
         pop bp
