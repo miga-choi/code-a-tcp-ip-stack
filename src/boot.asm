@@ -283,3 +283,11 @@ print:
 ; 0: "0" at the end appends a null terminator ("0") to the string,
 ;    which is commonly used to mark the end of a string in assembly.
 msg:    db "Oh boy do I sure love assembly!", 0
+
+        ;; The code in a boot sector has to be exactly 512 bytes, ending in 0xAA55.
+
+        ; Pad the binary to a length of 510 bytes.
+        times 510-($-$$) db 0
+
+        ; Make sure the file ends with the appropriate boot signature.
+        dw 0xAA55
