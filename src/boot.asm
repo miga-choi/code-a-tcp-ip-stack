@@ -109,11 +109,24 @@
         ;; off-screen content before it is shown to the user. This is called "multiple" or "double buffering".
         ;; We don't really acre about this, however, so we'll just use the default page of 0.
 
+        ; Push the 16-bit "0000h" onto the stack.
         push 0000h
+
         call movecursor
+
+        ; Adds 2 to sp (stack pointer).
         add sp, 2
 
+        ; Push the address of the label "msg" onto the stack.
         push msg
+
+        call print
+
+        add sp, 2
+
+        ;; "cli" and "hlt" after finishing printing tell the processor not to accept interrupts and to halt processing.
+        cli
+        hlt
 
 
 ;; If you look at the spec, you'll see that we need to set AH to 0x07, and AL to 0x00.
@@ -128,11 +141,15 @@
 ;; calling convention between caller and callee. "pusha" and "popa" push and pop all general
 ;; registers on an off the stack. We save the caller's base pointer (4 bytes), and update the
 ;; base pointer with the new stack pointer. At the very end, we essentially mirror this process.
-clearscreen: ; This is the label for the "clearscreen" subroutine.
-        push bp ; Saves the current value of the "bp" (base pointer) register onto the stack.
+
+; This is the label for the "clearscreen" subroutine.
+clearscreen:
+        ; Saves the current value of the "bp" (base pointer) register onto the stack.
+        push bp
         mov bp, sp
 
-        pusha ; Push all general-purpose registers ("ax","cx","dx","bx","sp","bp","si","di") onto the stack.
+        ; Push all general-purpose registers ("ax","cx","dx","bx","sp","bp","si","di") onto the stack.
+        pusha
 
         mov ah, 07h ; tells BIOS to scroll down window
         mov al, 00h ; clear entire window
@@ -144,13 +161,16 @@ clearscreen: ; This is the label for the "clearscreen" subroutine.
         ; This triggers a BIOS interrupt, specifically interrupt "10th", which handles video services.
         int 10h ; calls video interrupt
 
-        popa ; Restores all the general-purpose register that where saved with.
+        ; Restores all the general-purpose register that where saved with.
+        popa
 
         mov sp, bp
 
-        pop bp ; Restore the "bp" register to its original value. This restores the caller's stack frame.
+        ; Restore the "bp" register to its original value. This restores the caller's stack frame.
+        pop bp
 
-        ret ; Returns from the subroutine by popping the return address off the stack and jumping back to that address.
+        ; Returns from the subroutine by popping the return address off the stack and jumping back to that address.
+        ret
 
 
 ;; The only thing that might look unusual is the "mov dx, [bp+4]".
@@ -160,43 +180,91 @@ clearscreen: ; This is the label for the "clearscreen" subroutine.
 ;; Note also that the caller has the responsibility to clean the stack after the callee returns,
 ;; which amounts to removing the arguments from the top of the stack by moving the stack pointer.
 movecursor:
+        ; Save the current value of the "bp" (base pointer) register onto the stack.
         push bp
+
+        ; Copies the value of the "sp" (stack pointer) register into the "bp" register.
         mov bp, sp
+
+        ; Push all general-purpose registers ("ax","cx","dx","bx","sp","bp","si","di") onto the stack.
         pusha
 
+        ; Load the value from the memory location "[bp+4]" into the "dx" register.
         mov dx, [bp+4] ; get the argument from the stack. |bp| = 2, |arg| = 2
+
+        ; Set the "ah" register to "02h".
         mov ah, 02h    ; set cursor position
+
+        ; Set the "bh" register to "00h".
         mov bh, 00h    ; page 0 - doesn't matter, we're not using double-buffering
 
+        ; Restore all general-purpose registers that were saved with "pusha".
         popa
+
+        ; Restore the stack pointer ("sp") to the value of the base pointer ("bp").
         mov sp, bp
+
+        ; Restore the "bp" register to its original value, undoing the effect of the initial "push bp".
         pop bp
+
+        ; Return control to the calling code by popping the return address off the stack and jumping to that address.
         ret
 
 
 print:
+        ; Push the current value of the "bp" (base pointer) register onto the stack.
         push bp
+
+        ; Set the "bp" register to the current value of the "sp" (stack pointer) register.
         mov bp, sp
+
+        ; Push all the general-purpose registers ("ax","cx","dx","bx","sp","bp","si","di") onto the stack.
         pusha
+
+        ; Move the value stored at the memory location "[bp+4]" into the "si" register.
         mov si, [bp+4] ; grab the pointer to the data
-        mov bh, 0x00   ; page number, 0 again
-        mov bl, 0x00   ; foreground color, irrelevant - in text mode
-        mov ah, 0x0E   ; print character to TTY
+
+        ; Set the "bh" register to "00h".
+        mov bh, 00h    ; page number, 0 again
+
+        ; Set the "bl" register to "00h".
+        mov bl, 00h    ; foreground color, irrelevant - in text mode
+
+        ; Set the "ah" register to "0Eh".
+        mov ah, 0Eh    ; print character to TTY
 
 
 .char:
+        ; Move the byte of data located at the memory address pointed to by the "si" register into the "al" register.
         mov al, [si] ; get the current char from out pointer position
+
+        ; Increment the "si" register by 1.
         add si, 1    ; keep incrementing si until we see a null char
+
+        ; Performs a bitwise OR between the "al" register and "0".
         or al, 0
+
+        ; Jumps to the label ".return" if the zero flag (ZF) is set.
         je .return   ; end if the string is done
-        int 0x10     ; print the character if we're not done
+
+        ; Trigger a BIOS interrupt, specifically interrupt "10h", which handles video services.
+        int 10h      ; print the character if we're not done
+
+        ; Cause an unconditional jump back to the label ".char".
         jmp .char    ; keep looping
 
 
 .return:
+        ; Restore the contents of the general-purpose registers from the stack.
         popa
+
+        ; Restore the stack pointer ("sp") to the value of the base pointer ("bp").
         mov sp, bp
+
+        ; Restore the bas pointer ("bp") to its original value by popping if off the stack.
         pop bp
+
+        ; Return from the subroutine.
         ret
 
 
@@ -209,4 +277,9 @@ print:
 ;; The "0" at the end terminates the string with a null character,
 ;; so we'll know when the string is done.
 ;; We can reference the address of this string with "msg".
+
+; db: This stands for "define byte". It allocates memory
+;     and initializes it with the specified byte values.
+; 0: "0" at the end appends a null terminator ("0") to the string,
+;    which is commonly used to mark the end of a string in assembly.
 msg:    db "Oh boy do I sure love assembly!", 0
